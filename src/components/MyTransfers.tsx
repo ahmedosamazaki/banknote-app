@@ -1,20 +1,30 @@
-import { useState } from 'react';
-import {
-  Search,
-  User,
-  Phone,
-  Clock,
-  CheckCircle,
-  XCircle,
-  Image as ImageIcon,
-  X,
-  ChevronDown,
-  Calendar,
-  Hash,
-  Building2,
-  Banknote,
+import React, { useState, useEffect } from 'react';
+import { 
+  Clock, 
+  CheckCircle, 
+  XCircle, 
+  Image as ImageIcon, 
+  X, 
+  ChevronDown, 
+  Calendar, 
+  Hash, 
+  Building2, 
+  Banknote 
 } from 'lucide-react';
-import { supabase, Transfer } from '@/lib/supabase';
+import { supabase } from '../lib/supabase';
+
+// تعريف الـ Interface للـ Transfer مباشرة هنا لتجنب أي مشاكل استيراد
+export interface Transfer {
+  id: string;
+  created_at: string;
+  sender_name: string;
+  sender_phone: string;
+  bank_name: string;
+  amount: number;
+  status: 'pending' | 'approved' | 'rejected';
+  receipt_url?: string;
+  notes?: string;
+}
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'قيد المراجعة',
@@ -25,311 +35,112 @@ const STATUS_LABELS: Record<string, string> = {
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
   approved: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-  rejected: 'bg-red-500/15 text-red-400 border-red-500/30',
+  rejected: 'bg-rose-500/15 text-rose-400 border-rose-500/30',
 };
 
-const STATUS_ICONS: Record<string, React.ReactNode> = {
-  pending: <Clock className="w-3.5 h-3.5" />,
-  approved: <CheckCircle className="w-3.5 h-3.5" />,
-  rejected: <XCircle className="w-3.5 h-3.5" />,
-};
-
-export default function MyTransfers() {
-  const [searchType, setSearchType] = useState<'name' | 'phone'>('name');
-  const [query, setQuery] = useState('');
+export function MyTransfers() {
   const [transfers, setTransfers] = useState<Transfer[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [searched, setSearched] = useState(false);
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query.trim()) return;
-    setLoading(true);
-    setSearched(true);
+  useEffect(() => {
+    fetchTransfers();
+  }, []);
 
-    const field = searchType === 'name' ? 'representative_name' : 'sender_phone';
-    const { data, error } = await supabase
-      .from('transfers')
-      .select('*')
-      .ilike(field, `%${query.trim()}%`)
-      .order('created_at', { ascending: false });
+  const fetchTransfers = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('transfers')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    if (!error && data) setTransfers(data as Transfer[]);
-    setLoading(false);
+      if (error) throw error;
+      if (data) setTransfers(data);
+    } catch (error) {
+      console.error('Error fetching transfers:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const formatAmount = (n: number) =>
-    new Intl.NumberFormat('ar-EG', {
-      style: 'currency',
-      currency: 'EGP',
-      maximumFractionDigits: 0,
-    }).format(n);
-
-  const formatDate = (iso: string) =>
-    new Date(iso).toLocaleDateString('ar-EG', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-  const totalAmount = transfers.reduce((s, t) => s + Number(t.transfer_amount), 0);
-  const approvedCount = transfers.filter((t) => t.status === 'approved').length;
-
   return (
-    <div className="p-4 space-y-5">
-      {/* Info Banner */}
-      <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 flex gap-3">
-        <User className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-        <div>
-          <p className="text-blue-300 font-medium text-sm">عرض تحويلاتي</p>
-          <p className="text-slate-400 text-xs mt-0.5 leading-relaxed">
-            ابحث باسمك أو رقم هاتفك لعرض جميع التحويلات التي أرسلتها وحالتها.
-          </p>
-        </div>
+    <div className="w-full space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-white">سجل التحويلات</h2>
+        <button 
+          onClick={fetchTransfers}
+          className="text-xs text-slate-400 hover:text-white bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 transition"
+        >
+          تحديث
+        </button>
       </div>
 
-      {/* Search Form */}
-      <form onSubmit={handleSearch} className="space-y-3">
-        {/* Toggle: name vs phone */}
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => { setSearchType('name'); setQuery(''); setSearched(false); }}
-            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all duration-200 ${
-              searchType === 'name'
-                ? 'border-emerald-500 bg-emerald-500/15 text-emerald-400'
-                : 'border-slate-700 bg-slate-800/50 text-slate-400'
-            }`}
-          >
-            <User className="w-4 h-4" />
-            بحث بالاسم
-          </button>
-          <button
-            type="button"
-            onClick={() => { setSearchType('phone'); setQuery(''); setSearched(false); }}
-            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all duration-200 ${
-              searchType === 'phone'
-                ? 'border-emerald-500 bg-emerald-500/15 text-emerald-400'
-                : 'border-slate-700 bg-slate-800/50 text-slate-400'
-            }`}
-          >
-            <Phone className="w-4 h-4" />
-            بحث بالهاتف
-          </button>
+      {loading ? (
+        <div className="text-center py-10 text-slate-400">جاري تحميل التحويلات...</div>
+      ) : transfers.length === 0 ? (
+        <div className="text-center py-10 text-slate-500 bg-slate-900/50 rounded-xl border border-slate-800">
+          لا توجد تحويلات سابقة
         </div>
-
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type={searchType === 'phone' ? 'tel' : 'text'}
-              inputMode={searchType === 'phone' ? 'tel' : 'text'}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={searchType === 'name' ? 'أدخل اسمك كاملاً...' : '01xxxxxxxxx'}
-              dir={searchType === 'phone' ? 'ltr' : 'rtl'}
-              className="w-full bg-slate-800/60 border border-slate-700 focus:border-emerald-500 text-white placeholder-slate-500 rounded-xl pr-10 pl-4 py-3 text-sm outline-none transition-colors"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={!query.trim() || loading}
-            className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-5 py-3 rounded-xl transition-colors text-sm"
-          >
-            بحث
-          </button>
-        </div>
-      </form>
-
-      {/* Loading skeleton */}
-      {loading && (
+      ) : (
         <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-4 animate-pulse">
-              <div className="h-4 bg-slate-700 rounded w-36 mb-3" />
-              <div className="h-3 bg-slate-700/60 rounded w-24 mb-2" />
-              <div className="h-3 bg-slate-700/60 rounded w-20" />
+          {transfers.map((item) => (
+            <div 
+              key={item.id} 
+              className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3 transition hover:border-slate-700"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-slate-300 flex items-center gap-1.5">
+                  <Banknote className="w-4 h-4 text-emerald-400" />
+                  {item.bank_name}
+                </span>
+                <span className={`text-xs px-2.5 py-1 rounded-full border ${STATUS_COLORS[item.status] || 'bg-slate-800 text-slate-300'}`}>
+                  {STATUS_LABELS[item.status] || item.status}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-slate-400">{item.sender_name}</span>
+                <span className="text-emerald-400 font-bold text-base">{item.amount} ج.م</span>
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-800/60">
+                <span className="flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5" />
+                  {new Date(item.created_at).toLocaleDateString('ar-EG')}
+                </span>
+                
+                {item.receipt_url && (
+                  <button 
+                    onClick={() => setSelectedImage(item.receipt_url || null)}
+                    className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    عرض الإيصال
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Summary stats */}
-      {!loading && searched && transfers.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
-          <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-3 text-center">
-            <p className="text-white font-bold text-lg">{transfers.length}</p>
-            <p className="text-slate-400 text-xs mt-0.5">إجمالي</p>
-          </div>
-          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-center">
-            <p className="text-emerald-400 font-bold text-lg">{approvedCount}</p>
-            <p className="text-slate-400 text-xs mt-0.5">مقبول</p>
-          </div>
-          <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-center">
-            <p className="text-blue-400 font-bold text-sm leading-tight">{formatAmount(totalAmount)}</p>
-            <p className="text-slate-400 text-xs mt-0.5">المجموع</p>
-          </div>
-        </div>
-      )}
-
-      {/* Empty state */}
-      {!loading && searched && transfers.length === 0 && (
-        <div className="text-center py-12">
-          <Search className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-          <p className="text-slate-400 font-medium">لا توجد تحويلات</p>
-          <p className="text-slate-500 text-sm mt-1">
-            تحقق من {searchType === 'name' ? 'الاسم' : 'رقم الهاتف'} وحاول مجدداً
-          </p>
-        </div>
-      )}
-
-      {/* Transfer list */}
-      {!loading && transfers.length > 0 && (
-        <div className="space-y-3">
-          {transfers.map((t) => (
-            <RepTransferCard
-              key={t.id}
-              transfer={t}
-              isExpanded={expanded === t.id}
-              onToggle={() => setExpanded(expanded === t.id ? null : t.id)}
-              onViewImage={() => t.receipt_image_url && setLightboxUrl(t.receipt_image_url)}
-              formatAmount={formatAmount}
-              formatDate={formatDate}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Image Lightbox */}
-      {lightboxUrl && (
-        <div
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
-          onClick={() => setLightboxUrl(null)}
-        >
-          <button
-            className="absolute top-4 left-4 w-9 h-9 bg-slate-800/80 rounded-full flex items-center justify-center"
-            onClick={() => setLightboxUrl(null)}
-          >
-            <X className="w-5 h-5 text-white" />
-          </button>
-          <img
-            src={lightboxUrl}
-            alt="إيصال التحويل"
-            className="max-w-full max-h-full object-contain rounded-lg"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RepTransferCard({
-  transfer: t,
-  isExpanded,
-  onToggle,
-  onViewImage,
-  formatAmount,
-  formatDate,
-}: {
-  transfer: Transfer;
-  isExpanded: boolean;
-  onToggle: () => void;
-  onViewImage: () => void;
-  formatAmount: (n: number) => string;
-  formatDate: (s: string) => string;
-}) {
-  return (
-    <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl overflow-hidden">
-      {/* Card Header - always visible */}
-      <button
-        className="w-full text-right p-4 flex items-start gap-3"
-        onClick={onToggle}
-      >
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <p className="text-emerald-400 font-bold text-xl">{formatAmount(t.transfer_amount)}</p>
-            <span
-              className={`text-xs font-medium px-2.5 py-1 rounded-full border flex items-center gap-1 flex-shrink-0 ${STATUS_COLORS[t.status]}`}
+      {/* Modal عرض الإيصال */}
+      {selectedImage && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="relative max-w-lg w-full bg-slate-900 rounded-2xl p-2 border border-slate-800">
+            <button 
+              onClick={() => setSelectedImage(null)}
+              className="absolute top-4 left-4 bg-slate-800 text-slate-300 p-1.5 rounded-full hover:bg-slate-700 transition"
             >
-              {STATUS_ICONS[t.status]}
-              {STATUS_LABELS[t.status]}
-            </span>
-          </div>
-          <div className="flex items-center gap-3 text-xs text-slate-400">
-            <span className="flex items-center gap-1">
-              <Building2 className="w-3 h-3" />
-              {t.branch_name}
-            </span>
-            <span
-              className={`px-1.5 py-0.5 rounded text-xs font-medium ${t.transfer_type === 'instapay' ? 'bg-blue-500/15 text-blue-400' : 'bg-red-500/15 text-red-400'}`}
-            >
-              {t.transfer_type === 'instapay' ? 'InstaPay' : 'VF Cash'}
-            </span>
-          </div>
-          <p className="text-slate-500 text-xs mt-1.5 flex items-center gap-1">
-            <Calendar className="w-3 h-3" />
-            {formatDate(t.created_at)}
-          </p>
-        </div>
-        <ChevronDown
-          className={`w-4 h-4 text-slate-400 flex-shrink-0 mt-1 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-        />
-      </button>
-
-      {/* Expanded details */}
-      {isExpanded && (
-        <div className="border-t border-slate-700/50 p-4 space-y-3">
-          {t.reference_number && (
-            <div className="flex items-center justify-between">
-              <span className="text-slate-500 text-sm flex items-center gap-1.5">
-                <Hash className="w-3.5 h-3.5" />
-                رقم المرجع
-              </span>
-              <span className="text-slate-200 text-sm font-mono" dir="ltr">
-                {t.reference_number}
-              </span>
-            </div>
-          )}
-          {t.bank_name && (
-            <div className="flex items-center justify-between">
-              <span className="text-slate-500 text-sm flex items-center gap-1.5">
-                <Banknote className="w-3.5 h-3.5" />
-                البنك / الجهة
-              </span>
-              <span className="text-slate-200 text-sm">{t.bank_name}</span>
-            </div>
-          )}
-          <div className="flex items-center justify-between">
-            <span className="text-slate-500 text-sm flex items-center gap-1.5">
-              <Phone className="w-3.5 h-3.5" />
-              هاتف المرسل
-            </span>
-            <span className="text-slate-200 text-sm font-mono" dir="ltr">
-              {t.sender_phone}
-            </span>
-          </div>
-          {t.notes && (
-            <div>
-              <p className="text-slate-500 text-xs mb-1">ملاحظات</p>
-              <p className="text-slate-300 text-sm bg-slate-800/50 rounded-lg p-3 leading-relaxed">
-                {t.notes}
-              </p>
-            </div>
-          )}
-          {t.receipt_image_url && (
-            <button
-              onClick={onViewImage}
-              className="w-full flex items-center justify-center gap-2 border border-slate-700 hover:border-slate-600 text-slate-300 hover:text-white text-sm py-2.5 rounded-xl transition-colors"
-            >
-              <ImageIcon className="w-4 h-4" />
-              عرض صورة الإيصال
+              <X className="w-5 h-5" />
             </button>
-          )}
+            <img 
+              src={selectedImage} 
+              alt="إيصال التحويل" 
+              className="w-full h-auto max-h-[80vh] object-contain rounded-xl mt-8" 
+            />
+          </div>
         </div>
       )}
     </div>
