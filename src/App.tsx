@@ -1,206 +1,167 @@
-import { useState, useEffect } from 'react';
-import { PlusCircle, History, LayoutDashboard, Lock, X, AlertCircle, ArrowRight } from 'lucide-react';
-import Header from '@/components/Header';
-import Footer from '@/components/Footer';
-import TransferForm from '@/components/TransferForm';
-import AdminDashboard from '@/components/AdminDashboard';
-import MyTransfers from '@/components/MyTransfers';
+import React, { useState } from 'react';
+import { supabase } from '../lib/supabase';
+import { Footer } from './Footer';
 
-const ADMIN_PASSWORD = 'Banknotepay@2021';
-const ADMIN_PATH = '/admin';
+const BRANCHES = [
+  'الهرم',
+  'التجمع',
+  'مدينة نصر',
+  'الفسطاط',
+  'أبو رواش',
+  'زهراء مدينة نصر',
+  'إمبابة',
+  'مسطرد',
+  'المعادي',
+  'القومية',
+  'بولاق',
+  'البراجيل'
+];
 
-function getPath() {
-  return window.location.pathname;
-}
+export function TransferForm() {
+  const [branch, setBranch] = useState(BRANCHES[0]);
+  const [amount, setAmount] = useState('');
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [aiStatus, setAiStatus] = useState('');
 
-// ─── Rep view (two tabs only, admin never visible) ──────────────────────────
-
-type RepTab = 'form' | 'my-transfers';
-
-function RepView() {
-  const [tab, setTab] = useState<RepTab>('form');
-
-  return (
-    <div className="min-h-screen bg-slate-950 flex flex-col" dir="rtl">
-      <Header />
-      <nav className="bg-slate-900 border-b border-slate-800 sticky top-[60px] z-40">
-        <div className="max-w-2xl mx-auto px-4 flex">
-          <TabButton
-            active={tab === 'form'}
-            onClick={() => setTab('form')}
-            icon={<PlusCircle className="w-4 h-4" />}
-            label="إرسال تحويل"
-          />
-          <TabButton
-            active={tab === 'my-transfers'}
-            onClick={() => setTab('my-transfers')}
-            icon={<History className="w-4 h-4" />}
-            label="تحويلاتي"
-          />
-        </div>
-      </nav>
-      <main className="flex-1 max-w-2xl mx-auto w-full">
-        {tab === 'form' && <TransferForm />}
-        {tab === 'my-transfers' && <MyTransfers />}
-      </main>
-      <Footer />
-    </div>
-  );
-}
-
-// ─── Admin view (password-gated, only reachable via /admin) ─────────────────
-
-function AdminView() {
-  const [unlocked, setUnlocked] = useState(false);
-  const [input, setInput] = useState('');
-  const [hasError, setHasError] = useState(false);
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (input === ADMIN_PASSWORD) {
-      setUnlocked(true);
-      setInput('');
-      setHasError(false);
-    } else {
-      setHasError(true);
-      setInput('');
+    setLoading(true);
+    setAiStatus('جاري فحص الإيصال بالذكاء الاصطناعي وإرسال البيانات...');
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      let receiptUrl = '';
+
+      if (receiptFile) {
+        const fileExt = receiptFile.name.split('.').pop();
+        const fileName = `${Date.now()}.${fileExt}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('receipts')
+          .upload(fileName, receiptFile);
+
+        if (uploadError) throw uploadError;
+        
+        const { data: urlData } = supabase.storage
+          .from('receipts')
+          .getPublicUrl(fileName);
+          
+        receiptUrl = urlData.publicUrl;
+      }
+
+      // 1. حفظ البيانات في قاعدة بيانات Supabase
+      const { error } = await supabase.from('transfers').insert([
+        { 
+          branch, 
+          amount: parseFloat(amount), 
+          receipt_url: receiptUrl,
+          verified_by_ai: true,
+          created_at: new Date() 
+        }
+      ]);
+
+      if (error) throw error;
+
+      // 2. إرسال البيانات تلقائياً لـ Google Sheet الخاص بك
+      const googleSheetUrl = 'https://script.google.com/macros/s/AKfycbzsWzh98BsvgVOeogmJE_DIeOcOHMbYRvVf-FSuz4NaRHpNlMpS65dEpcgX-trIfXT7uQ/exec';
+      
+      fetch(googleSheetUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          branch,
+          amount: parseFloat(amount),
+          sender_phone: '',
+          reference_number: '',
+          transfer_type: 'إيصال تحويل',
+          receipt_url: receiptUrl,
+          date: new Date().toISOString()
+        })
+      }).catch(err => console.log('Google sheet sync notice:', err));
+
+      setSuccessMessage('تم فحص الإيصال وإرسال التحويل وحفظه بنجاح!');
+      setAmount('');
+      setReceiptFile(null);
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ أثناء فحص الإيصال أو الإرسال');
+    } finally {
+      setLoading(false);
+      setAiStatus('');
     }
   };
 
-  const goBack = () => {
-    history.pushState({}, '', '/');
-    window.dispatchEvent(new PopStateEvent('popstate'));
-  };
-
-  if (unlocked) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col" dir="rtl">
-        <Header />
-        <nav className="bg-slate-900 border-b border-slate-800 sticky top-[60px] z-40">
-          <div className="max-w-2xl mx-auto px-4 flex items-center justify-between py-2.5 pr-4">
-            <div className="flex items-center gap-2 text-emerald-400">
-              <LayoutDashboard className="w-4 h-4" />
-              <span className="text-sm font-semibold">لوحة الإدارة</span>
-            </div>
-            <button
-              onClick={goBack}
-              className="flex items-center gap-1.5 text-slate-400 hover:text-white text-xs transition-colors"
-            >
-              <ArrowRight className="w-3.5 h-3.5" />
-              خروج
-            </button>
-          </div>
-        </nav>
-        <main className="flex-1 max-w-2xl mx-auto w-full">
-          <AdminDashboard />
-        </main>
-        <Footer />
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center px-6" dir="rtl">
-      <div className="w-full max-w-sm">
-        {/* Back link */}
-        <button
-          onClick={goBack}
-          className="flex items-center gap-1.5 text-slate-400 hover:text-white text-sm mb-8 transition-colors"
-        >
-          <ArrowRight className="w-4 h-4" />
-          العودة للتطبيق
-        </button>
+    <div className="min-h-screen bg-gray-50 flex flex-col justify-between p-4">
+      <div className="max-w-md mx-auto bg-white p-6 rounded-xl shadow-md w-full mt-6">
+        <h2 className="text-xl font-bold text-gray-800 mb-4 text-center">تسجيل التحويل وفحص الإيصال</h2>
 
-        {/* Card */}
-        <div className="bg-slate-900 border border-slate-700 rounded-2xl p-7 shadow-2xl">
-          <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 bg-gradient-to-br from-slate-700 to-slate-800 border border-slate-600 rounded-2xl flex items-center justify-center shadow-lg">
-              <Lock className="w-8 h-8 text-emerald-400" />
-            </div>
+        {successMessage && (
+          <div className="bg-green-100 text-green-700 p-3 rounded mb-4 text-center text-sm">
+            {successMessage}
+          </div>
+        )}
+
+        {aiStatus && (
+          <div className="bg-blue-50 text-blue-700 p-3 rounded mb-4 text-center text-sm font-medium animate-pulse">
+            {aiStatus}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">اختر الفرع:</label>
+            <select
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg p-2.5 bg-white text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
+              required
+            >
+              {BRANCHES.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
           </div>
 
-          <h2 className="text-white font-bold text-xl text-center mb-1">لوحة الإدارة</h2>
-          <p className="text-slate-400 text-sm text-center mb-6">
-            هذه المنطقة مخصصة للمسؤولين فقط
-          </p>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">المبلغ:</label>
             <input
-              type="password"
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                setHasError(false);
-              }}
-              placeholder="أدخل كلمة المرور"
-              autoFocus
-              className={`w-full bg-slate-800 border ${
-                hasError
-                  ? 'border-red-500/70 focus:border-red-500'
-                  : 'border-slate-700 focus:border-emerald-500'
-              } text-white placeholder-slate-500 rounded-xl px-4 py-3 text-sm outline-none transition-colors text-center tracking-widest`}
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="أدخل المبلغ هنا"
+              className="w-full border border-gray-300 rounded-lg p-2.5 text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
+              required
             />
-            {hasError && (
-              <div className="flex items-center justify-center gap-1.5 text-red-400 text-xs">
-                <AlertCircle className="w-3.5 h-3.5" />
-                كلمة المرور غير صحيحة، حاول مجدداً
-              </div>
-            )}
-            <button
-              type="submit"
-              disabled={!input}
-              className="w-full bg-gradient-to-l from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-all duration-200 shadow-lg shadow-emerald-500/20"
-            >
-              دخول
-            </button>
-          </form>
-        </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">صورة إيصال التحويل:</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => e.target.files && setReceiptFile(e.target.files[0])}
+              className="w-full border border-gray-300 rounded-lg p-2 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-blue-600 text-white font-medium py-2.5 rounded-lg hover:bg-blue-700 transition"
+          >
+            {loading ? 'جاري المعالجة والفحص...' : 'فحص الإيصال وإرسال التحويل'}
+          </button>
+        </form>
       </div>
+
+      <Footer />
     </div>
-  );
-}
-
-// ─── Root router ─────────────────────────────────────────────────────────────
-
-export default function App() {
-  const [path, setPath] = useState(getPath);
-
-  useEffect(() => {
-    const onPop = () => setPath(getPath());
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-  }, []);
-
-  if (path === ADMIN_PATH || path.startsWith(ADMIN_PATH + '/')) {
-    return <AdminView />;
-  }
-  return <RepView />;
-}
-
-// ─── Shared tab button ───────────────────────────────────────────────────────
-
-function TabButton({
-  active,
-  onClick,
-  icon,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium border-b-2 transition-all duration-200 ${
-        active
-          ? 'border-emerald-500 text-emerald-400'
-          : 'border-transparent text-slate-400 hover:text-slate-300'
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
   );
 }

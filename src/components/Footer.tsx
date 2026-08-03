@@ -1,12 +1,7 @@
-export default function Footer() {
+export function Footer() {
   return (
-    <footer className="bg-slate-900 border-t border-slate-700/50 py-4 mt-auto">
-      <div className="max-w-2xl mx-auto px-4 text-center">
-        <p className="text-slate-400 text-sm">
-          تم التطوير بواسطة{' '}
-          <span className="text-emerald-400 font-semibold">Ahmed Osama</span>
-        </p>
-      </div>
+    <footer className="py-4 text-center text-xs text-gray-500 border-t border-gray-100 mt-auto">
+      Developed by Ahmed Osama, Banknote Development Team
     </footer>
   );
 }

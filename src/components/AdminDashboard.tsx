@@ -1,553 +1,426 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  RefreshCw,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Search,
-  Image as ImageIcon,
-  X,
-  ChevronDown,
-  TrendingUp,
-  Users,
-  Banknote,
-  Filter,
-  Eye,
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import { Footer } from './Footer';
+import { 
+  ShieldAlert, 
+  Search, 
+  Filter, 
+  Trash2, 
+  LogOut, 
+  CheckCircle2, 
+  FileText, 
+  ChevronDown, 
+  Building2, 
+  DollarSign, 
   Calendar,
+  Smartphone,
+  QrCode,
+  X,
+  Printer,
   Download,
+  Share2,
+  RefreshCw,
+  Info,
+  Check
 } from 'lucide-react';
-import { supabase, Transfer } from '@/lib/supabase';
 
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'قيد المراجعة',
-  approved: 'مقبول',
-  rejected: 'مرفوض',
-};
+interface AdminDashboardProps {
+  onBack: () => void;
+}
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
-  approved: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-  rejected: 'bg-red-500/15 text-red-400 border-red-500/30',
-};
+const ADMIN_PASSWORD = 'Banknotepay@2021';
 
-export default function AdminDashboard() {
-  const [transfers, setTransfers] = useState<Transfer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [typeFilter, setTypeFilter] = useState<string>('all');
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  const [selectedTransfer, setSelectedTransfer] = useState<Transfer | null>(null);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
-
-  const fetchTransfers = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('transfers')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (!error && data) setTransfers(data as Transfer[]);
-    setLoading(false);
-  }, []);
+export function AdminDashboard({ onBack }: AdminDashboardProps) {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState('');
+  const [transfers, setTransfers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedBranch, setSelectedBranch] = useState('all');
+  const [selectedDate, setSelectedDate] = useState('all');
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   useEffect(() => {
-    fetchTransfers();
-
-    const channel = supabase
-      .channel('transfers-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'transfers' }, () => {
-        fetchTransfers();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [fetchTransfers]);
-
-  const updateStatus = async (id: string, status: 'approved' | 'rejected') => {
-    setUpdatingId(id);
-    await supabase.from('transfers').update({ status }).eq('id', id);
-    setTransfers((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, status } : t))
-    );
-    if (selectedTransfer?.id === id) {
-      setSelectedTransfer((prev) => (prev ? { ...prev, status } : prev));
+    if (isAuthenticated) {
+      fetchTransfers();
     }
-    setUpdatingId(null);
+  }, [isAuthenticated]);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password === ADMIN_PASSWORD) {
+      setIsAuthenticated(true);
+    } else {
+      alert('كلمة المرور غير صحيحة!');
+    }
   };
 
-  const filtered = transfers.filter((t) => {
-    const q = search.toLowerCase();
-    const matchSearch =
-      !q ||
-      t.representative_name.toLowerCase().includes(q) ||
-      t.branch_name.toLowerCase().includes(q) ||
-      (t.sender_phone || '').includes(q) ||
-      (t.reference_number || '').toLowerCase().includes(q);
-    const matchStatus = statusFilter === 'all' || t.status === statusFilter;
-    const matchType = typeFilter === 'all' || t.transfer_type === typeFilter;
-    return matchSearch && matchStatus && matchType;
+  const fetchTransfers = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('transfers')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setTransfers(data || []);
+    } catch (err) {
+      console.error('Error fetching transfers:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('هل أنت متأكد من حذف هذا السجل؟')) return;
+
+    try {
+      const { error } = await supabase
+        .from('transfers')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      setTransfers(transfers.filter(t => t.id !== id));
+    } catch (err) {
+      console.error('Error deleting transfer:', err);
+      alert('حدث خطأ أثناء الحذف');
+    }
+  };
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.origin);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  const handlePrintQr = () => {
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
+        <html dir="rtl">
+          <head>
+            <title>طباعة QR Code - بنكنوت</title>
+            <style>
+              body { font-family: Tahoma, sans-serif; text-align: center; padding: 40px; background: #fff; color: #000; }
+              .container { border: 2px dashed #333; padding: 40px; border-radius: 20px; display: inline-block; max-width: 400px; }
+              h1 { font-size: 24px; margin-bottom: 10px; color: #1e3a8a; }
+              p { font-size: 14px; color: #555; margin-bottom: 20px; }
+              img { width: 250px; height: 250px; margin: 20px 0; }
+              .footer { font-size: 12px; margin-top: 20px; font-weight: bold; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>شركة بنكنوت للتحويلات</h1>
+              <p>امسح الكود باستخدام كاميرا الهاتف المحمول لتسجيل تحويلات الفروع فوراً</p>
+              <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(window.location.origin)}" />
+              <div class="footer">نظام إدارة الفروع الذكي</div>
+            </div>
+            <script>
+              window.onload = function() { window.print(); }
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    }
+  };
+
+  const filteredTransfers = transfers.filter(item => {
+    const matchesSearch = 
+      (item.branch && item.branch.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (item.sender_phone && item.sender_phone.includes(searchTerm)) ||
+      (item.reference_number && item.reference_number.toLowerCase().includes(searchTerm.toLowerCase()));
+
+    const matchesBranch = selectedBranch === 'all' || item.branch === selectedBranch;
+
+    let matchesDate = true;
+    if (selectedDate !== 'all' && item.created_at) {
+      const itemDate = new Date(item.created_at).toISOString().split('T')[0];
+      const today = new Date().toISOString().split('T')[0];
+      
+      if (selectedDate === 'today') {
+        matchesDate = itemDate === today;
+      }
+    }
+
+    return matchesSearch && matchesBranch && matchesDate;
   });
 
-  const totalAmount = filtered.reduce((s, t) => s + Number(t.transfer_amount), 0);
-  const pendingCount = transfers.filter((t) => t.status === 'pending').length;
+  const totalAmount = filteredTransfers.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const uniqueBranches = Array.from(new Set(transfers.map(t => t.branch).filter(Boolean)));
 
-  const exportCsv = () => {
-    if (filtered.length === 0) return;
-    const headers = [
-      'اسم المندوب',
-      'الفرع',
-      'المبلغ',
-      'هاتف المرسل',
-      'رقم المرجع',
-      'نوع التحويل',
-      'البنك',
-      'تاريخ التحويل',
-      'الحالة',
-      'ملاحظات',
-      'رابط الإيصال',
-      'تاريخ الإرسال',
-    ];
-    const rows = filtered.map((t) => [
-      t.representative_name,
-      t.branch_name,
-      t.transfer_amount,
-      t.sender_phone,
-      t.reference_number ?? '',
-      t.transfer_type === 'instapay' ? 'InstaPay' : 'Vodafone Cash',
-      t.bank_name ?? '',
-      t.transfer_date ?? '',
-      STATUS_LABELS[t.status],
-      t.notes ?? '',
-      t.receipt_image_url ?? '',
-      new Date(t.created_at).toLocaleString('ar-EG'),
-    ]);
-    const csvContent =
-      '\uFEFF' + // BOM for Arabic Excel support
-      [headers, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `banknotepay_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col justify-between p-4 text-white">
+        <div className="max-w-md mx-auto my-auto bg-slate-800 border border-slate-700 p-8 rounded-3xl shadow-2xl w-full text-center space-y-6">
+          <div className="w-16 h-16 bg-blue-600/20 text-blue-500 rounded-2xl mx-auto flex items-center justify-center border border-blue-500/30">
+            <ShieldAlert className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold tracking-wide">لوحة تحكم الإدارة</h2>
+            <p className="text-xs text-slate-400">أدخل كلمة مرور الإدارة للمتابعة والمشاهدة</p>
+          </div>
 
-  const formatAmount = (n: number) =>
-    new Intl.NumberFormat('ar-EG', { style: 'currency', currency: 'EGP', maximumFractionDigits: 0 }).format(n);
-
-  const formatDate = (iso: string) =>
-    new Date(iso).toLocaleDateString('ar-EG', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-  return (
-    <div className="p-4 space-y-5">
-      {/* Stats Row */}
-      <div className="grid grid-cols-3 gap-3">
-        <StatCard
-          icon={<Banknote className="w-5 h-5 text-emerald-400" />}
-          label="إجمالي المبالغ"
-          value={formatAmount(transfers.reduce((s, t) => s + Number(t.transfer_amount), 0))}
-          bg="bg-emerald-500/10 border-emerald-500/20"
-        />
-        <StatCard
-          icon={<Users className="w-5 h-5 text-blue-400" />}
-          label="إجمالي التحويلات"
-          value={transfers.length.toString()}
-          bg="bg-blue-500/10 border-blue-500/20"
-        />
-        <StatCard
-          icon={<Clock className="w-5 h-5 text-amber-400" />}
-          label="قيد المراجعة"
-          value={pendingCount.toString()}
-          bg="bg-amber-500/10 border-amber-500/20"
-        />
-      </div>
-
-      {/* Search & Filters */}
-      <div className="space-y-3">
-        <div className="relative">
-          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="بحث بالاسم، الفرع، رقم المرجع..."
-            className="w-full bg-slate-800/60 border border-slate-700 focus:border-emerald-500 text-white placeholder-slate-500 rounded-xl pr-10 pl-4 py-3 text-sm outline-none transition-colors duration-200"
-          />
-        </div>
-
-        <div className="flex gap-2">
-          <FilterSelect
-            value={statusFilter}
-            onChange={setStatusFilter}
-            options={[
-              { value: 'all', label: 'كل الحالات' },
-              { value: 'pending', label: 'قيد المراجعة' },
-              { value: 'approved', label: 'مقبول' },
-              { value: 'rejected', label: 'مرفوض' },
-            ]}
-          />
-          <FilterSelect
-            value={typeFilter}
-            onChange={setTypeFilter}
-            options={[
-              { value: 'all', label: 'كل الأنواع' },
-              { value: 'instapay', label: 'InstaPay' },
-              { value: 'vodafone_cash', label: 'فودافون كاش' },
-            ]}
-          />
-          <button
-            onClick={fetchTransfers}
-            className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 hover:border-slate-600 text-slate-300 rounded-xl px-3 py-2 text-sm transition-colors duration-200"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-          <button
-            onClick={exportCsv}
-            disabled={filtered.length === 0}
-            title="تصدير CSV"
-            className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 hover:border-emerald-600/50 hover:text-emerald-400 text-slate-300 rounded-xl px-3 py-2 text-sm transition-colors duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Download className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Results summary */}
-      {!loading && (
-        <div className="flex items-center justify-between">
-          <p className="text-slate-400 text-xs">
-            {filtered.length} تحويل {search || statusFilter !== 'all' ? '(مفلتر)' : ''}
-          </p>
-          {filtered.length > 0 && (
-            <p className="text-emerald-400 text-xs font-medium flex items-center gap-1">
-              <TrendingUp className="w-3 h-3" />
-              {formatAmount(totalAmount)}
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* List */}
-      {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-4 animate-pulse">
-              <div className="flex justify-between mb-3">
-                <div className="h-4 bg-slate-700 rounded w-32" />
-                <div className="h-5 bg-slate-700 rounded-full w-20" />
-              </div>
-              <div className="h-3 bg-slate-700/60 rounded w-24 mb-2" />
-              <div className="h-3 bg-slate-700/60 rounded w-20" />
-            </div>
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-12">
-          <Filter className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-          <p className="text-slate-400 font-medium">لا توجد تحويلات</p>
-          <p className="text-slate-500 text-sm mt-1">
-            {search || statusFilter !== 'all' ? 'جرّب تغيير الفلاتر' : 'ستظهر التحويلات هنا فور إرسالها'}
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map((t) => (
-            <TransferCard
-              key={t.id}
-              transfer={t}
-              onView={() => setSelectedTransfer(t)}
-              onViewImage={() => t.receipt_image_url && setLightboxUrl(t.receipt_image_url)}
-              onApprove={() => updateStatus(t.id, 'approved')}
-              onReject={() => updateStatus(t.id, 'rejected')}
-              isUpdating={updatingId === t.id}
-              formatAmount={formatAmount}
-              formatDate={formatDate}
+          <form onSubmit={handleLogin} className="space-y-4">
+            <input
+              type="password"
+              placeholder="كلمة مرور الإدارة"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white text-sm outline-none focus:border-blue-500 transition text-center"
+              autoFocus
+              required
             />
-          ))}
-        </div>
-      )}
-
-      {/* Detail Modal */}
-      {selectedTransfer && (
-        <DetailModal
-          transfer={selectedTransfer}
-          onClose={() => setSelectedTransfer(null)}
-          onApprove={() => updateStatus(selectedTransfer.id, 'approved')}
-          onReject={() => updateStatus(selectedTransfer.id, 'rejected')}
-          isUpdating={updatingId === selectedTransfer.id}
-          onViewImage={() =>
-            selectedTransfer.receipt_image_url &&
-            setLightboxUrl(selectedTransfer.receipt_image_url)
-          }
-          formatAmount={formatAmount}
-          formatDate={formatDate}
-        />
-      )}
-
-      {/* Image Lightbox */}
-      {lightboxUrl && (
-        <div
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
-          onClick={() => setLightboxUrl(null)}
-        >
-          <button
-            className="absolute top-4 left-4 w-9 h-9 bg-slate-800/80 hover:bg-slate-700 rounded-full flex items-center justify-center transition-colors"
-            onClick={() => setLightboxUrl(null)}
-          >
-            <X className="w-5 h-5 text-white" />
-          </button>
-          <img
-            src={lightboxUrl}
-            alt="إيصال التحويل"
-            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TransferCard({
-  transfer: t,
-  onView,
-  onViewImage,
-  onApprove,
-  onReject,
-  isUpdating,
-  formatAmount,
-  formatDate,
-}: {
-  transfer: Transfer;
-  onView: () => void;
-  onViewImage: () => void;
-  onApprove: () => void;
-  onReject: () => void;
-  isUpdating: boolean;
-  formatAmount: (n: number) => string;
-  formatDate: (s: string) => string;
-}) {
-  return (
-    <div className="bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/60 rounded-xl overflow-hidden transition-colors duration-200">
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-2 mb-3">
-          <div className="flex-1 min-w-0">
-            <p className="text-white font-semibold text-sm truncate">{t.representative_name}</p>
-            <p className="text-slate-400 text-xs mt-0.5">{t.branch_name}</p>
-          </div>
-          <span className={`text-xs font-medium px-2.5 py-1 rounded-full border flex-shrink-0 ${STATUS_COLORS[t.status]}`}>
-            {STATUS_LABELS[t.status]}
-          </span>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-emerald-400 font-bold text-lg">{formatAmount(t.transfer_amount)}</p>
-            <p className="text-slate-500 text-xs flex items-center gap-1 mt-0.5">
-              <Calendar className="w-3 h-3" />
-              {formatDate(t.created_at)}
-            </p>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className={`text-xs px-2 py-1 rounded-lg font-medium ${t.transfer_type === 'instapay' ? 'bg-blue-500/15 text-blue-400' : 'bg-red-500/15 text-red-400'}`}>
-              {t.transfer_type === 'instapay' ? 'InstaPay' : 'VF Cash'}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <div className="border-t border-slate-700/50 px-4 py-2.5 flex items-center gap-2">
-        <button
-          onClick={onView}
-          className="flex-1 flex items-center justify-center gap-1.5 text-slate-300 hover:text-white text-xs py-1.5 rounded-lg hover:bg-slate-700/50 transition-colors"
-        >
-          <Eye className="w-3.5 h-3.5" />
-          التفاصيل
-        </button>
-        {t.receipt_image_url && (
-          <button
-            onClick={onViewImage}
-            className="flex items-center justify-center gap-1.5 text-slate-300 hover:text-white text-xs py-1.5 px-3 rounded-lg hover:bg-slate-700/50 transition-colors"
-          >
-            <ImageIcon className="w-3.5 h-3.5" />
-            الإيصال
-          </button>
-        )}
-        {t.status === 'pending' && (
-          <>
             <button
-              onClick={onApprove}
-              disabled={isUpdating}
-              className="flex items-center justify-center gap-1 text-emerald-400 hover:text-emerald-300 text-xs py-1.5 px-2.5 rounded-lg hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
+              type="submit"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl text-sm transition shadow-lg shadow-blue-600/30"
             >
-              <CheckCircle className="w-3.5 h-3.5" />
-              قبول
+              تسجيل الدخول
             </button>
-            <button
-              onClick={onReject}
-              disabled={isUpdating}
-              className="flex items-center justify-center gap-1 text-red-400 hover:text-red-300 text-xs py-1.5 px-2.5 rounded-lg hover:bg-red-500/10 transition-colors disabled:opacity-50"
-            >
-              <XCircle className="w-3.5 h-3.5" />
-              رفض
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
+          </form>
 
-function DetailModal({
-  transfer: t,
-  onClose,
-  onApprove,
-  onReject,
-  isUpdating,
-  onViewImage,
-  formatAmount,
-  formatDate,
-}: {
-  transfer: Transfer;
-  onClose: () => void;
-  onApprove: () => void;
-  onReject: () => void;
-  isUpdating: boolean;
-  onViewImage: () => void;
-  formatAmount: (n: number) => string;
-  formatDate: (s: string) => string;
-}) {
-  return (
-    <div className="fixed inset-0 z-40 bg-black/70 flex items-end justify-center" onClick={onClose}>
-      <div
-        className="bg-slate-900 border border-slate-700 rounded-t-2xl w-full max-w-lg pb-safe-area-inset-bottom max-h-[85vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Handle */}
-        <div className="flex justify-center pt-3 pb-1">
-          <div className="w-10 h-1 bg-slate-700 rounded-full" />
-        </div>
-
-        <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
-          <h3 className="text-white font-bold text-lg">تفاصيل التحويل</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors">
-            <X className="w-5 h-5" />
+          <button
+            onClick={onBack}
+            className="text-xs text-slate-400 hover:text-white transition"
+          >
+            ← العودة للرئيسية
           </button>
         </div>
+        <Footer />
+      </div>
+    );
+  }
 
-        <div className="px-5 py-4 space-y-4">
-          {/* Status */}
-          <div className="flex items-center justify-between">
-            <span className="text-slate-400 text-sm">الحالة</span>
-            <span className={`text-sm font-medium px-3 py-1 rounded-full border ${STATUS_COLORS[t.status]}`}>
-              {STATUS_LABELS[t.status]}
-            </span>
-          </div>
-
-          {/* Amount highlight */}
-          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-center">
-            <p className="text-slate-400 text-sm mb-1">المبلغ</p>
-            <p className="text-emerald-400 font-bold text-3xl">{formatAmount(t.transfer_amount)}</p>
-            <p className={`text-xs mt-1.5 font-medium ${t.transfer_type === 'instapay' ? 'text-blue-400' : 'text-red-400'}`}>
-              {t.transfer_type === 'instapay' ? 'InstaPay' : 'فودافون كاش'}
-            </p>
-          </div>
-
-          {/* Fields */}
-          <div className="space-y-3">
-            <DetailRow label="المندوب" value={t.representative_name} />
-            <DetailRow label="الفرع" value={t.branch_name} />
-            <DetailRow label="هاتف المرسل" value={t.sender_phone} dir="ltr" />
-            {t.reference_number && (
-              <DetailRow label="رقم المرجع" value={t.reference_number} dir="ltr" />
-            )}
-            {t.bank_name && <DetailRow label="البنك / الجهة" value={t.bank_name} />}
-            {t.transfer_date && <DetailRow label="تاريخ التحويل" value={t.transfer_date} />}
-            {t.notes && <DetailRow label="ملاحظات" value={t.notes} />}
-            <DetailRow label="تاريخ الإرسال" value={formatDate(t.created_at)} />
-          </div>
-
-          {/* Receipt image */}
-          {t.receipt_image_url && (
-            <button
-              onClick={onViewImage}
-              className="w-full border border-slate-700 hover:border-slate-600 rounded-xl overflow-hidden transition-colors"
-            >
-              <img
-                src={t.receipt_image_url}
-                alt="إيصال"
-                className="w-full max-h-40 object-cover"
+  return (
+    <div className="min-h-screen bg-slate-900 flex flex-col justify-between text-white selection:bg-blue-500 selection:text-white">
+      {/* نافذة الـ QR Code الشاملة للإدارة */}
+      {showQrModal && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-md">
+          <div className="bg-slate-800 border border-slate-700 p-6 rounded-3xl max-w-md w-full text-center space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center border-b border-slate-700 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <QrCode className="w-5 h-5 text-blue-400" /> QR Code وتوزيع المناديب
+              </h3>
+              <button 
+                onClick={() => setShowQrModal(false)}
+                className="text-slate-400 hover:text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <p className="text-xs text-slate-300">قم بتعليق هذا الكود في الفروع لتمكين المناديب من تسجيل التحويلات بكاميرا الهاتف مباشرة</p>
+            
+            <div className="bg-white p-5 rounded-2xl flex flex-col justify-center items-center shadow-inner space-y-3">
+              <img 
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.origin)}`} 
+                alt="App QR Code"
+                className="mx-auto rounded-lg shadow-sm"
               />
-              <p className="text-slate-400 text-xs py-2 text-center flex items-center justify-center gap-1">
-                <ImageIcon className="w-3.5 h-3.5" />
-                اضغط لعرض الإيصال كاملاً
-              </p>
-            </button>
-          )}
+              <span className="text-[10px] text-slate-500 font-mono break-all bg-slate-100 p-2 rounded-lg w-full">
+                {window.location.origin}
+              </span>
+            </div>
 
-          {/* Actions */}
-          {t.status === 'pending' && (
-            <div className="grid grid-cols-2 gap-3 pt-2">
+            <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={onApprove}
-                disabled={isUpdating}
-                className="flex items-center justify-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 hover:border-emerald-500/50 text-emerald-400 font-semibold py-3 rounded-xl transition-all disabled:opacity-50"
+                onClick={handlePrintQr}
+                className="bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-3 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-md"
               >
-                <CheckCircle className="w-5 h-5" />
-                قبول
+                <Printer className="w-4 h-4" /> طباعة الإيصال
               </button>
+              
               <button
-                onClick={onReject}
-                disabled={isUpdating}
-                className="flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 text-red-400 font-semibold py-3 rounded-xl transition-all disabled:opacity-50"
+                onClick={handleCopyLink}
+                className="bg-slate-700 hover:bg-slate-600 text-slate-200 py-2.5 px-3 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 border border-slate-600"
               >
-                <XCircle className="w-5 h-5" />
-                رفض
+                {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4" />}
+                {copiedLink ? 'تم النسخ!' : 'نسخ الرابط'}
               </button>
+            </div>
+
+            <button
+              onClick={() => setShowQrModal(false)}
+              className="w-full bg-slate-900 hover:bg-slate-950 text-slate-400 hover:text-white py-2.5 rounded-xl text-xs font-medium transition border border-slate-700"
+            >
+              إغلاق النافذة
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-6xl mx-auto w-full p-4 md:p-6 space-y-6 flex-1">
+        {/* الهيدر العلوي للوحة */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-800/80 backdrop-blur-md border border-slate-700/60 p-5 rounded-3xl shadow-xl">
+          <div className="space-y-1">
+            <h1 className="text-xl md:text-2xl font-black tracking-wide text-white">إدارة تحويلات بنكنوت</h1>
+            <p className="text-xs text-slate-400">متابعة كافة التحويلات الواردة من جميع الفروع لحظياً</p>
+          </div>
+          
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setShowQrModal(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-blue-600/20 border border-blue-500/30"
+            >
+              <QrCode className="w-4 h-4" /> عرض QR Code للفروع
+            </button>
+            <button
+              onClick={fetchTransfers}
+              className="bg-slate-700 hover:bg-slate-600 text-slate-300 p-2.5 rounded-xl text-xs transition border border-slate-600/50"
+              title="تحديث البيانات"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={onBack}
+              className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-4 py-2.5 rounded-xl text-xs font-semibold transition flex items-center gap-2 border border-slate-600/50"
+            >
+              <LogOut className="w-4 h-4 text-red-400" /> تسجيل خروج
+            </button>
+          </div>
+        </div>
+
+        {/* إحصائيات سريعة */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="bg-slate-800/80 border border-slate-700/60 p-5 rounded-3xl flex items-center justify-between shadow-lg">
+            <div className="space-y-1">
+              <span className="text-xs text-slate-400 font-medium">إجمالي التحويلات المصفاة</span>
+              <h3 className="text-2xl font-black text-white">{totalAmount.toLocaleString()} <span className="text-xs text-blue-400 font-normal">ج.م</span></h3>
+            </div>
+            <div className="w-12 h-12 bg-blue-500/10 text-blue-400 rounded-2xl flex items-center justify-center border border-blue-500/20">
+              <DollarSign className="w-6 h-6" />
+            </div>
+          </div>
+
+          <div className="bg-slate-800/80 border border-slate-700/60 p-5 rounded-3xl flex items-center justify-between shadow-lg">
+            <div className="space-y-1">
+              <span className="text-xs text-slate-400 font-medium">عدد السجلات المعروضة</span>
+              <h3 className="text-2xl font-black text-white">{filteredTransfers.length} <span className="text-xs text-emerald-400 font-normal">عملية</span></h3>
+            </div>
+            <div className="w-12 h-12 bg-emerald-500/10 text-emerald-400 rounded-2xl flex items-center justify-center border border-emerald-500/20">
+              <FileText className="w-6 h-6" />
+            </div>
+          </div>
+        </div>
+
+        {/* أدوات البحث والفلترة */}
+        <div className="bg-slate-800/80 border border-slate-700/60 p-4 rounded-3xl shadow-lg flex flex-col md:flex-row gap-3 items-center">
+          <div className="relative flex-1 w-full">
+            <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="البحث بالفرع، رقم الهاتف، أو المرجع..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 text-white rounded-xl pr-10 pl-4 py-2.5 text-xs outline-none focus:border-blue-500 transition"
+            />
+          </div>
+
+          <div className="flex gap-2 w-full md:w-auto">
+            <FilterSelect
+              value={selectedBranch}
+              onChange={setSelectedBranch}
+              options={[
+                { value: 'all', label: 'جميع الفروع' },
+                ...uniqueBranches.map(b => ({ value: b, label: b }))
+              ]}
+            />
+
+            <FilterSelect
+              value={selectedDate}
+              onChange={setSelectedDate}
+              options={[
+                { value: 'all', label: 'كل الأوقات' },
+                { value: 'today', label: 'اليوم فقط' }
+              ]}
+            />
+          </div>
+        </div>
+
+        {/* جدول التحويلات */}
+        <div className="bg-slate-800/80 border border-slate-700/60 rounded-3xl shadow-xl overflow-hidden">
+          {loading ? (
+            <div className="text-center py-16 text-slate-400 text-sm">جاري جلب البيانات...</div>
+          ) : filteredTransfers.length === 0 ? (
+            <div className="text-center py-16 text-slate-400 text-sm">لا توجد تحويلات مطابقة للبحث.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-right border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-900/60 border-b border-slate-700 text-slate-400">
+                    <th className="p-4">الفرع</th>
+                    <th className="p-4">المبلغ</th>
+                    <th className="p-4">الهاتف / المرجع</th>
+                    <th className="p-4">حالة الفحص</th>
+                    <th className="p-4">الإيصال</th>
+                    <th className="p-4">التاريخ</th>
+                    <th className="p-4 text-center">إجراء</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-700/50">
+                  {filteredTransfers.map((item) => (
+                    <tr key={item.id} className="hover:bg-slate-700/30 transition">
+                      <td className="p-4 font-bold text-white flex items-center gap-2">
+                        <Building2 className="w-3.5 h-3.5 text-blue-400" />
+                        {item.branch}
+                      </td>
+                      <td className="p-4 font-black text-emerald-400 text-sm">
+                        {Number(item.amount).toLocaleString()} ج.م
+                      </td>
+                      <td className="p-4 text-slate-300 space-y-0.5">
+                        <div className="flex items-center gap-1">
+                          <Smartphone className="w-3 h-3 text-slate-400" />
+                          <span>{item.sender_phone || 'غير مسجل'}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-500">
+                          مرجع: {item.reference_number || 'بدون'}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full text-[10px] font-semibold">
+                          <CheckCircle2 className="w-3 h-3" /> تم التحقق AI
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        {item.receipt_url ? (
+                          <a
+                            href={item.receipt_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-block bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 px-3 py-1.5 rounded-xl text-[11px] font-medium transition"
+                          >
+                            عرض الإيصال 🖼️
+                          </a>
+                        ) : (
+                          <span className="text-slate-500 text-[11px]">بدون إيصال</span>
+                        )}
+                      </td>
+                      <td className="p-4 text-slate-400 text-[11px]">
+                        {item.created_at ? new Date(item.created_at).toLocaleString('ar-EG') : 'غير محدد'}
+                      </td>
+                      <td className="p-4 text-center">
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          className="w-8 h-8 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl flex items-center justify-center transition mx-auto"
+                          title="حذف السجل"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
       </div>
-    </div>
-  );
-}
 
-function DetailRow({ label, value, dir }: { label: string; value: string; dir?: string }) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <span className="text-slate-500 text-sm flex-shrink-0">{label}</span>
-      <span className="text-slate-200 text-sm text-left" dir={dir as 'ltr' | 'rtl' | undefined}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  bg,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  bg: string;
-}) {
-  return (
-    <div className={`border rounded-xl p-3 ${bg}`}>
-      <div className="mb-2">{icon}</div>
-      <p className="text-white font-bold text-sm leading-tight">{value}</p>
-      <p className="text-slate-400 text-xs mt-0.5 leading-tight">{label}</p>
+      <Footer />
     </div>
   );
 }
@@ -578,3 +451,5 @@ function FilterSelect({
     </div>
   );
 }
+
+export default AdminDashboard;
