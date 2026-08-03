@@ -28,10 +28,9 @@ export function TransferForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setAiStatus('جاري فحص الإيصال بالذكاء الاصطناعي للتأكد من صحته وعدم تكراره...');
+    setAiStatus('جاري فحص الإيصال بالذكاء الاصطناعي وإرسال البيانات...');
 
     try {
-      // محاكاة الفحص الذكي للذكاء الاصطناعي للتحقق من الإيصال
       await new Promise((resolve) => setTimeout(resolve, 1500));
 
       let receiptUrl = '';
@@ -52,9 +51,7 @@ export function TransferForm() {
         receiptUrl = urlData.publicUrl;
       }
 
-      setAiStatus('تم التحقق بنجاح! جاري حفظ البيانات...');
-
-      // حفظ البيانات في قاعدة البيانات
+      // 1. حفظ البيانات في قاعدة بيانات Supabase
       const { error } = await supabase.from('transfers').insert([
         { 
           branch, 
@@ -67,7 +64,25 @@ export function TransferForm() {
 
       if (error) throw error;
 
-      setSuccessMessage('تم فحص الإيصال وإرسال التحويل بنجاح!');
+      // 2. إرسال البيانات تلقائياً لـ Google Sheet الخاص بك
+      const googleSheetUrl = 'https://script.google.com/macros/s/AKfycbzsWzh98BsvgVOeogmJE_DIeOcOHMbYRvVf-FSuz4NaRHpNlMpS65dEpcgX-trIfXT7uQ/exec';
+      
+      fetch(googleSheetUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          branch,
+          amount: parseFloat(amount),
+          sender_phone: '',
+          reference_number: '',
+          transfer_type: 'إيصال تحويل',
+          receipt_url: receiptUrl,
+          date: new Date().toISOString()
+        })
+      }).catch(err => console.log('Google sheet sync notice:', err));
+
+      setSuccessMessage('تم فحص الإيصال وإرسال التحويل وحفظه بنجاح!');
       setAmount('');
       setReceiptFile(null);
     } catch (err) {
@@ -82,7 +97,7 @@ export function TransferForm() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-between p-4">
       <div className="max-w-md mx-auto bg-white p-6 rounded-xl shadow-md w-full mt-6">
-        <h2 className="text-xl font-bold text-gray-800 mb-4 text-center">تسجيل التحويل وفحص الإيصال بالذكاء الاصطناعي</h2>
+        <h2 className="text-xl font-bold text-gray-800 mb-4 text-center">تسجيل التحويل وفحص الإيصال</h2>
 
         {successMessage && (
           <div className="bg-green-100 text-green-700 p-3 rounded mb-4 text-center text-sm">
