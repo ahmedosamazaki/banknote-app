@@ -1,16 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
+import Header from './components/Header';
+import TransferForm from './components/TransferForm';
+import { Footer } from './components/Footer';
 
-// 1. قم بتعريف الـ Interface للخصائص
-interface HeaderProps {
-  currentTab: 'send' | 'history';
-  setCurrentTab: (tab: 'send' | 'history') => void;
-}
+export default function App() {
+  const [currentTab, setCurrentTab] = useState<'send' | 'history'>('send');
 
-// 2. قم بتطبيقها على المكون
-export function Header({ currentTab, setCurrentTab }: HeaderProps) {
   return (
-    <header>
-      {/* محتوى الـ Header */}
-    </header>
+    <div className="min-h-screen bg-slate-950 text-white p-4 flex flex-col justify-between max-w-md mx-auto">
+      <div className="w-full">
+        <Header />
+        <main className="mt-4">
+          <TransferForm />
+        </main>
+      </div>
+      <Footer />
+    </div>
   );
 }
