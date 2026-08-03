@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { TransferForm } from './components/TransferForm';
 import { AdminDashboard } from './components/AdminDashboard';
-import { MyTransfers } from './components/MyTransfers';
-import { Header } from './components/Header';
+import MyTransfers from './components/MyTransfers';
+import Header from './components/Header';
 import { Footer } from './components/Footer';
 import { ShieldCheck, UserCheck } from 'lucide-react';
 
@@ -98,9 +98,9 @@ export function App() {
         </div>
 
         {currentTab === 'send' ? (
-          <TransferForm delegateName={delegateName} />
+          <TransferForm />
         ) : (
-          <MyTransfers delegateName={delegateName} />
+          <MyTransfers />
         )}
       </main>
 
